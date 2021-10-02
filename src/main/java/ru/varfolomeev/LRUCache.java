@@ -4,106 +4,74 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-public class LRUCache<K, V> extends AbstractMap<K, V> implements Map<K, V> {
-    private final HashMap<K, V> valueHashMap;
-    private final HashMap<K, LinkedList.Node<K>> nodeHashMap;
-    private final LinkedList<K> list;
+public class LRUCache<K, V> {
+    private final HashMap<K, EntryList.Node<K, V>> nodeHashMap;
+    private final EntryList<K, V> list;
 
     private final int maxSize;
 
     public LRUCache(int maxSize) {
-        this.valueHashMap = new HashMap<>();
         this.nodeHashMap = new HashMap<>();
-        this.list = new LinkedList<>();
-        if (maxSize >= 0) { //TODO: check maxSize == 0
+        this.list = new EntryList<>();
+        if (maxSize > 0) {
             this.maxSize = maxSize;
         } else {
             throw new IllegalArgumentException("Illegal Max Size: " + maxSize);
         }
     }
 
-    @Override
     public int size() {
-        return valueHashMap.size();
+        return nodeHashMap.size();
     }
 
-    @Override
     public boolean isEmpty() {
-        return valueHashMap.isEmpty();
+        return nodeHashMap.isEmpty();
     }
 
-    @Override
-    public boolean containsKey(Object key) {
-        return valueHashMap.containsKey(key);
+    public boolean containsKey(K key) {
+        assert nodeHashMap.containsKey(key) == (nodeHashMap.get(key) != null);
+        return nodeHashMap.containsKey(key);
     }
 
-    @Override
-    public boolean containsValue(Object value) {
-        return valueHashMap.containsValue(value);
+    public V get(K key) {
+        return nodeHashMap.get(key).getValue();
     }
 
-    @Override
-    public V get(Object key) {
-        return valueHashMap.get(key);
-    }
-
-    @Override
-    public V put(K key, V value) {
-        V previousValue = null;
-        LinkedList.Node<K> addedNode;
+    public void put(K key, V value) {
+        EntryList.Node<K, V> addedNode;
         if (containsKey(key)) {
-            previousValue = valueHashMap.put(key, value);
             addedNode = nodeHashMap.get(key);
+            addedNode.setValue(value);
         } else {
             if (size() == maxSize) {
                 K removedKey = list.removeFirst();
                 nodeHashMap.remove(removedKey);
-                valueHashMap.remove(removedKey);
             }
-            valueHashMap.put(key, value);
-            addedNode = list.addLast(key);
+            addedNode = list.addLast(key, value);
             nodeHashMap.put(key, addedNode);
         }
         list.propagate(addedNode);
-        return previousValue;
+        assert get(key) == value;
+        assert size() <= maxSize;
     }
 
-    @Override
-    public V remove(Object key) {
-        V removedValue = valueHashMap.remove(key);
-        LinkedList.Node<K> removedNode = nodeHashMap.remove(key);
-        list.remove(removedNode);
-        return removedValue;
-    }
-
-    @Override
-    public void putAll(@NotNull Map<? extends K, ? extends V> m) {
-        throw new UnsupportedOperationException("putAll");
-    }
-
-    @Override
     public void clear() {
-        valueHashMap.clear();
+        nodeHashMap.clear();
         list.clear();
+        assert isEmpty();
     }
 
-    @NotNull
-    @Override
-    public Set<Entry<K, V>> entrySet() {
-        throw new UnsupportedOperationException("entrySet");
-    }
-
-    private static class LinkedList<V> {
-        private Node<V> first;
-        private Node<V> last;
+    private static class EntryList<K, V> {
+        private Node<K, V> first;
+        private Node<K, V> last;
 
         @NotNull
-        public Node<V> addLast(V v) {
-            return addLast(new Node<>(v));
+        Node<K, V> addLast(K key, V value) {
+            return addLast(new Node<>(key, value));
         }
 
         @NotNull
-        private Node<V> addLast(@NotNull Node<V> newNode) {
+        Node<K, V> addLast(@NotNull Node<K, V> newNode) {
             newNode.previous = last;
             newNode.next = null;
 
@@ -116,18 +84,17 @@ public class LRUCache<K, V> extends AbstractMap<K, V> implements Map<K, V> {
             return newNode;
         }
 
-        public V removeFirst() {
-            if (first == null) {
-                throw new NoSuchElementException();
-            } else {
-                V removedValue = first.value;
-                first = first.next;
-                first.previous = null;
-                return removedValue;
-            }
+        K removeFirst() {
+            assert first != null;
+            Node<K, V> removedNode = first;
+            first = first.next;
+            first.previous = null;
+            assert removedNode != first;
+            return removedNode.getKey();
         }
 
-        public void remove(@NotNull Node<V> node) {
+        void remove(@NotNull Node<K, V> node) {
+            assert first != null && last != null;
             if (node == last) {
                 last = node.previous;
             } else {
@@ -139,31 +106,47 @@ public class LRUCache<K, V> extends AbstractMap<K, V> implements Map<K, V> {
             } else {
                 node.previous.next = node.next;
             }
+            assert node != first;
+            assert node != last;
         }
 
-        public void propagate(@NotNull Node<V> node) {
-            if (node == last) {
-                return;
+        void propagate(@NotNull Node<K, V> node) {
+            if (node != last) {
+                remove(node);
+                addLast(node);
             }
-            remove(node);
-            addLast(node);
+            assert node == last;
         }
 
-        public void clear() {
+        void clear() {
             first = null;
             last = null;
         }
 
-        private static class Node<V> {
-            private final V value;
-            private Node<V> previous;
-            private Node<V> next;
+        private static class Node<K, V> {
+            private final K key;
+            private V value;
+            private Node<K, V> previous;
+            private Node<K, V> next;
 
 
-            private Node(V value) {
+            private Node(K key, V value) {
+                this.key = key;
                 this.value = value;
                 previous = null;
                 next = null;
+            }
+
+            public K getKey() {
+                return key;
+            }
+
+            public V getValue() {
+                return value;
+            }
+
+            public void setValue(V value) {
+                this.value = value;
             }
         }
     }
